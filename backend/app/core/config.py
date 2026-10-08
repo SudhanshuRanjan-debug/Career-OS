@@ -1,0 +1,120 @@
+"""
+Application configuration using pydantic-settings.
+All settings are loaded from environment variables / .env file.
+"""
+
+from typing import List, Union
+from pydantic import Field, AliasChoices, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+    # ---------------------------------------------------------------------------
+    # Application
+    # ---------------------------------------------------------------------------
+    APP_ENV: str = Field("development", validation_alias=AliasChoices("APP_ENV", "ENVIRONMENT"))
+    DEBUG: bool = True
+    APP_NAME: str = "Career Platform API"
+    APP_VERSION: str = "1.0.0"
+
+    ALLOWED_ORIGINS: Union[List[str], str] = Field(
+        ["http://localhost:5173", "http://localhost:3000", "http://localhost:80"],
+        validation_alias=AliasChoices("ALLOWED_ORIGINS", "CORS_ORIGINS", "BACKEND_CORS_ORIGINS"),
+    )
+    ALLOWED_HOSTS: Union[List[str], str] = Field(
+        ["localhost", "127.0.0.1", "*"],
+        validation_alias=AliasChoices("ALLOWED_HOSTS"),
+    )
+
+    @field_validator("ALLOWED_ORIGINS", "ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return []
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
+
+    # ---------------------------------------------------------------------------
+    # Database
+    # ---------------------------------------------------------------------------
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/career_platform"
+
+    # ---------------------------------------------------------------------------
+    # Authentication
+    # ---------------------------------------------------------------------------
+    SECRET_KEY: str = Field(
+        "CHANGE_ME_IN_PRODUCTION_USE_RANDOM_32_BYTES",
+        validation_alias=AliasChoices("SECRET_KEY", "JWT_SECRET"),
+    )
+    ALGORITHM: str = Field("HS256", validation_alias=AliasChoices("ALGORITHM", "JWT_ALGORITHM"))
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    BCRYPT_ROUNDS: int = 12
+    PASSWORD_RESET_TOKEN_EXPIRE_HOURS: int = 1
+    REFRESH_COOKIE_NAME: str = "refresh_token"
+    REFRESH_COOKIE_PATH: str = "/api/v1/auth"
+
+    @property
+    def COOKIE_SECURE(self) -> bool:
+        return self.APP_ENV.lower() == "production"
+
+    @property
+    def COOKIE_SAMESITE(self) -> str:
+        return "strict" if self.APP_ENV.lower() == "production" else "lax"
+
+    # ---------------------------------------------------------------------------
+    # File Storage
+    # ---------------------------------------------------------------------------
+    STORAGE_BACKEND: str = Field("local", validation_alias=AliasChoices("STORAGE_BACKEND", "STORAGE_PROVIDER"))
+    STORAGE_LOCAL_PATH: str = Field("./storage/private", validation_alias=AliasChoices("STORAGE_LOCAL_PATH", "STORAGE_LOCAL_ROOT"))
+
+    # Azure Blob Storage (production)
+    AZURE_STORAGE_CONNECTION_STRING: str = ""
+    AZURE_STORAGE_CONTAINER: str = Field(
+        "career-platform-files",
+        validation_alias=AliasChoices("AZURE_STORAGE_CONTAINER", "AZURE_STORAGE_CONTAINER_NAME"),
+    )
+
+    @property
+    def STORAGE_PROVIDER(self) -> str:
+        return self.STORAGE_BACKEND
+
+    @property
+    def STORAGE_LOCAL_ROOT(self) -> str:
+        return self.STORAGE_LOCAL_PATH
+
+
+
+    # File upload limits
+    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
+    ALLOWED_RESUME_MIME_TYPES: List[str] = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+
+    # ---------------------------------------------------------------------------
+    # Email (future — Stage 9)
+    # ---------------------------------------------------------------------------
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    FROM_EMAIL: str = "noreply@careerplatform.example.com"
+
+
+settings = Settings()

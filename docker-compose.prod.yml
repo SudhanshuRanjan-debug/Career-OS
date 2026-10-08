@@ -1,0 +1,102 @@
+# Career Platform — Production Docker Compose Configuration
+# Usage: docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  # ==========================================
+  # Database Service (PostgreSQL 16)
+  # ==========================================
+  db:
+    image: postgres:16-alpine
+    container_name: career_platform_prod_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-career_platform}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-career_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-prod-network
+
+  # ==========================================
+  # Backend API Service (FastAPI)
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../infrastructure/docker/backend.Dockerfile
+    container_name: career_platform_prod_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-career_platform}
+      SECRET_KEY: ${SECRET_KEY:-prod_super_secret_jwt_key_at_least_32_chars_long}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      STORAGE_LOCAL_ROOT: /app/storage
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - storage_prod_data:/app/storage
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/v1/health\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - app-prod-network
+
+  # ==========================================
+  # Frontend Service (Compiled React SPA via Nginx)
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../infrastructure/docker/frontend.prod.Dockerfile
+    container_name: career_platform_prod_frontend
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-prod-network
+
+  # ==========================================
+  # Reverse Proxy & Gateway (Nginx)
+  # ==========================================
+  gateway:
+    image: nginx:alpine
+    container_name: career_platform_prod_gateway
+    restart: always
+    ports:
+      - "${PROD_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    volumes:
+      - ./infrastructure/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - app-prod-network
+
+networks:
+  app-prod-network:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
+  storage_prod_data:
