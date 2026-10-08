@@ -141,17 +141,17 @@ npm run build
 
 ---
 
-## 🗺 Implementation Roadmap
+## 🗺 ## 🗺 Implementation Roadmap
 
-- **Stage 0**: Architecture, Specifications, and Data Modeling *(Completed)*
-- **Stage 1**: Scaffold, Database Schema (31 models), Migrations, Frontend Shell (12 Hubs), Storage Abstraction, Test Foundation *(Completed)*
-- **Stage 2**: Authentication, Session Management, JWT Cookies *(Next)*
-- **Stage 3**: Candidate Profile, Resume & Document Vaults, Preferences
-- **Stage 4**: Opportunities & Saved Discovery
-- **Stage 5**: Applications Pipeline, Version Locking, Health Rules, Q&A Vault
-- **Stage 6**: Companies & Network Management
-- **Stage 7**: Interviews & Interview Preparation Hub
-- **Stage 8**: Tasks, Calendar & Notifications
-- **Stage 9**: Dashboard & Analytics Engine
-- **Stage 10**: Explainable Opportunity Matching Engine
-- **Stage 11–16**: UI Polish, Security Hardening, Automated Testing, Cloud Deployment
+- **Stage 0**: Project planning, requirements, architecture, and database design *(Completed)*
+- **Stage 1**: Initial setup of the frontend, backend, database, and application structure *(Completed)*
+- **Stage 2**: User registration, login, session management, and authentication *(Completed)*
+- **Stage 3**: Candidate profiles, resume and document management, and preferences *(Completed)*
+- **Stage 4**: Job discovery, opportunity tracking, and saved jobs *(Completed)*
+- **Stage 5**: Application tracking, progress updates, and application management *(Completed)*
+- **Stage 6**: Company and contact management *(Completed)*
+- **Stage 7**: Interview scheduling, tracking, and preparation *(Completed)*
+- **Stage 8**: Task management, calendar, and notifications *(Completed)*
+- **Stage 9**: Dashboard and job search analytics *(Completed)*
+- **Stage 10**: Job matching with explanations of why an opportunity may be a good fit *(Planned)*
+- **Future Improvements**: UI refinements, security improvements, more testing, and cloud deployment *(Planned)*
