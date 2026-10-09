@@ -83,7 +83,7 @@ export const ResetPasswordPage: React.FC = () => {
           <p>You can now sign in with your new password.</p>
           <div>
             <Link
-              to="/signin"
+              to="/login"
               className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-xs hover:bg-blue-700"
             >
               Sign In Now
@@ -116,7 +116,7 @@ export const ResetPasswordPage: React.FC = () => {
       )}
 
       <div className="text-center text-xs">
-        <Link to="/signin" className="text-blue-600 hover:text-blue-700 font-medium">
+        <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
           Back to sign in
         </Link>
       </div>

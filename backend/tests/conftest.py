@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 
 from app.core.dependencies import get_storage
+from app.core.rate_limiter import limiter
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app as fastapi_app
@@ -71,8 +72,10 @@ JSONB.result_processor = _sqlite_jsonb_res
 @pytest.fixture
 def client():
     """Synchronous test client using FastAPI TestClient without DB overrides."""
+    limiter.reset()
     with TestClient(fastapi_app) as test_client:
         yield test_client
+    limiter.reset()
 
 
 @pytest.fixture
@@ -91,6 +94,7 @@ def db_client(test_storage):
     Test client backed by an isolated in-memory database with all tables created.
     Automatically initializes schema and cleans up dependency overrides.
     """
+    limiter.reset()
     test_engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         echo=False,
@@ -130,3 +134,4 @@ def db_client(test_storage):
     fastapi_app.dependency_overrides.pop(get_db, None)
     fastapi_app.dependency_overrides.pop(get_storage, None)
     asyncio.run(test_engine.dispose())
+    limiter.reset()

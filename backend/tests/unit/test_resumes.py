@@ -127,6 +127,8 @@ def test_resume_download_streaming_and_isolation(db_client: TestClient):
     assert download_res.status_code == 200
     assert b"User A Secret Resume" in download_res.content
     assert download_res.headers["content-type"] == "application/pdf"
+    assert "attachment" in download_res.headers["content-disposition"]
+    assert download_res.headers["x-content-type-options"] == "nosniff"
 
     # User B CANNOT download User A's resume (404 / access denied)
     b_res = db_client.get(f"/api/v1/resumes/{resume_id}/download", headers=user_b)
@@ -152,3 +154,117 @@ def test_resume_soft_delete(db_client: TestClient):
     # Active listing is empty
     list_res = db_client.get("/api/v1/resumes", headers=headers).json()
     assert len(list_res["items"]) == 0
+
+
+import zipfile
+
+def _make_valid_docx_bytes(text: str = "Candidate Experience") -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n'
+            '  <Default Extension="xml" ContentType="application/xml"/>\n'
+            '  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>\n'
+            '</Types>',
+        )
+        zf.writestr(
+            "word/document.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">\n'
+            f'  <w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:body>\n'
+            '</w:document>',
+        )
+    return buf.getvalue()
+
+
+def test_resume_upload_valid_docx(db_client: TestClient):
+    """Legitimate DOCX file with valid Word OpenXML structure is accepted."""
+    headers = register_and_login(db_client, "docx_cand@example.com", "docxcand")
+    docx_bytes = _make_valid_docx_bytes("Senior Backend Engineer with FastAPI & Postgres")
+
+    files = {"file": ("my_resume.docx", io.BytesIO(docx_bytes), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+    res = db_client.post("/api/v1/resumes/upload", files=files, headers=headers)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["original_filename"] == "my_resume.docx"
+    assert data["mime_type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+    # Download returns safe attachment headers
+    dl_res = db_client.get(f"/api/v1/resumes/{data['id']}/download", headers=headers)
+    assert dl_res.status_code == 200
+    assert "attachment" in dl_res.headers["content-disposition"]
+    assert dl_res.headers["x-content-type-options"] == "nosniff"
+    assert dl_res.content == docx_bytes
+
+
+def test_resume_upload_invalid_pdf_signature(db_client: TestClient):
+    """Plain text or HTML disguised with a .pdf extension is rejected."""
+    headers = register_and_login(db_client, "fake_pdf@example.com", "fakepdf")
+
+    # Plain text disguised as PDF
+    fake_file = {"file": ("resume.pdf", io.BytesIO(b"<html><body>Malicious HTML</body></html>"), "application/pdf")}
+    res = db_client.post("/api/v1/resumes/upload", files=fake_file, headers=headers)
+    assert res.status_code == 400
+    assert "invalid pdf" in res.json()["detail"].lower()
+
+
+def test_resume_upload_invalid_docx_structure(db_client: TestClient):
+    """Zip archive missing Word document structures is rejected."""
+    headers = register_and_login(db_client, "fake_docx@example.com", "fakedocx")
+
+    # 1. Plain text disguised as docx
+    res1 = db_client.post(
+        "/api/v1/resumes/upload",
+        files={"file": ("fake.docx", io.BytesIO(b"not a zip file at all"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        headers=headers,
+    )
+    assert res1.status_code == 400
+    assert "invalid docx" in res1.json()["detail"].lower()
+
+    # 2. Valid zip but not a Word document (missing word/document.xml and [Content_Types].xml)
+    dummy_zip = io.BytesIO()
+    with zipfile.ZipFile(dummy_zip, "w") as z:
+        z.writestr("test.txt", "just a text file")
+    res2 = db_client.post(
+        "/api/v1/resumes/upload",
+        files={"file": ("fake_structure.docx", io.BytesIO(dummy_zip.getvalue()), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        headers=headers,
+    )
+    assert res2.status_code == 400
+    assert "invalid docx" in res2.json()["detail"].lower()
+
+
+def test_resume_upload_extension_content_mismatch(db_client: TestClient):
+    """Extension and detected content mismatch is rejected."""
+    headers = register_and_login(db_client, "mismatch_user@example.com", "mismatchuser")
+
+    # Valid PDF bytes sent with .docx extension
+    pdf_bytes = b"%PDF-1.4 Mock PDF"
+    res = db_client.post(
+        "/api/v1/resumes/upload",
+        files={"file": ("mismatched.docx", io.BytesIO(pdf_bytes), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "does not match" in res.json()["detail"].lower()
+
+
+def test_resume_download_sanitizes_filename(db_client: TestClient):
+    """Download Content-Disposition sanitizes path traversal characters and quotes."""
+    headers = register_and_login(db_client, "dl_sec@example.com", "dlsec")
+
+    f = {"file": ("../../evil\r\n\"inject.pdf", io.BytesIO(b"%PDF-1.4 Clean Content"), "application/pdf")}
+    upload_res = db_client.post("/api/v1/resumes/upload", files=f, headers=headers)
+    assert upload_res.status_code == 201
+    resume_id = upload_res.json()["id"]
+
+    dl_res = db_client.get(f"/api/v1/resumes/{resume_id}/download", headers=headers)
+    assert dl_res.status_code == 200
+    cd = dl_res.headers["content-disposition"]
+    assert "attachment" in cd
+    assert ".." not in cd
+    assert "\r" not in cd
+    assert "\n" not in cd
+    assert dl_res.headers["x-content-type-options"] == "nosniff"

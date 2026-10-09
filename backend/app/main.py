@@ -3,77 +3,84 @@ Career & Job Application Management Platform
 FastAPI Application Entry Point
 """
 
+from typing import Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import RedirectResponse
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.exceptions import register_exception_handlers
 from app.api.v1.router import api_router
 
-from fastapi.responses import RedirectResponse
 
-app = FastAPI(
-    title="Career Platform API",
-    description="Career & Job Application Management Platform",
-    version="1.0.0",
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
-    openapi_url="/openapi.json" if settings.DEBUG else None,
-)
+def create_application(custom_settings: Optional[Settings] = None) -> FastAPI:
+    """Create and configure FastAPI application instance."""
+    cfg = custom_settings or settings
 
-if settings.DEBUG:
-    @app.get("/api/docs", include_in_schema=False)
-    async def redirect_api_docs():
-        return RedirectResponse(url="/docs")
-
-
-# ---------------------------------------------------------------------------
-# Middleware
-# ---------------------------------------------------------------------------
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-if not settings.DEBUG:
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=settings.ALLOWED_HOSTS,
+    application = FastAPI(
+        title="Career Platform API",
+        description="Career & Job Application Management Platform",
+        version="1.0.0",
+        docs_url="/docs" if cfg.docs_enabled else None,
+        redoc_url="/redoc" if cfg.docs_enabled else None,
+        openapi_url="/openapi.json" if cfg.docs_enabled else None,
     )
 
-# ---------------------------------------------------------------------------
-# Exception handlers
-# ---------------------------------------------------------------------------
+    if cfg.docs_enabled:
+        @application.get("/api/docs", include_in_schema=False)
+        async def redirect_api_docs():
+            return RedirectResponse(url="/docs")
 
-register_exception_handlers(app)
+    # ---------------------------------------------------------------------------
+    # Middleware
+    # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=cfg.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-app.include_router(api_router, prefix="/api/v1")
+    # In production or when DEBUG is False, enforce TrustedHostMiddleware
+    if cfg.is_production or not cfg.DEBUG:
+        application.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=cfg.ALLOWED_HOSTS,
+        )
+
+    # ---------------------------------------------------------------------------
+    # Exception handlers
+    # ---------------------------------------------------------------------------
+
+    register_exception_handlers(application)
+
+    # ---------------------------------------------------------------------------
+    # Routes
+    # ---------------------------------------------------------------------------
+
+    application.include_router(api_router, prefix="/api/v1")
+
+    # ---------------------------------------------------------------------------
+    # Health endpoints
+    # ---------------------------------------------------------------------------
+
+    @application.get("/health", tags=["health"])
+    async def health_check():
+        return {"status": "ok"}
+
+    @application.get("/health/ready", tags=["health"])
+    async def readiness():
+        # TODO: add DB ping in Stage 2
+        return {"status": "ready"}
+
+    @application.get("/health/live", tags=["health"])
+    async def liveness():
+        return {"status": "alive"}
+
+    return application
 
 
-# ---------------------------------------------------------------------------
-# Health endpoints
-# ---------------------------------------------------------------------------
-
-@app.get("/health", tags=["health"])
-async def health_check():
-    return {"status": "ok"}
-
-
-@app.get("/health/ready", tags=["health"])
-async def readiness():
-    # TODO: add DB ping in Stage 2
-    return {"status": "ready"}
-
-
-@app.get("/health/live", tags=["health"])
-async def liveness():
-    return {"status": "alive"}
+app = create_application()

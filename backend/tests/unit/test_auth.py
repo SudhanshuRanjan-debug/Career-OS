@@ -536,3 +536,47 @@ def test_register_invalid_role(db_client):
     }
     response = db_client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 422
+
+
+def test_candidate_and_hirer_registration_and_login(db_client):
+    """Test candidate and hirer registration and subsequent login."""
+    # 1. Candidate registration
+    cand_payload = {
+        "email": "candidate_applicant@test.com",
+        "username": "candidate_app",
+        "password": "Password123!",
+        "role": "CANDIDATE",
+    }
+    cand_res = db_client.post("/api/v1/auth/register", json=cand_payload)
+    assert cand_res.status_code == 201
+    cand_data = cand_res.json()
+    assert cand_data["user"]["role"] == "CANDIDATE"
+
+    # 2. Candidate login
+    cand_login = db_client.post(
+        "/api/v1/auth/login",
+        json={"email": cand_payload["email"], "password": cand_payload["password"]},
+    )
+    assert cand_login.status_code == 200
+    assert cand_login.json()["user"]["role"] == "CANDIDATE"
+
+    # 3. Hirer registration
+    hirer_payload = {
+        "email": "hirer_recruiter@test.com",
+        "username": "hirer_rec",
+        "password": "Password123!",
+        "role": "HIRER",
+        "organization_name": "Talent Acquirers Inc.",
+    }
+    hirer_res = db_client.post("/api/v1/auth/register", json=hirer_payload)
+    assert hirer_res.status_code == 201
+    hirer_data = hirer_res.json()
+    assert hirer_data["user"]["role"] == "HIRER"
+
+    # 4. Hirer login
+    hirer_login = db_client.post(
+        "/api/v1/auth/login",
+        json={"email": hirer_payload["email"], "password": hirer_payload["password"]},
+    )
+    assert hirer_login.status_code == 200
+    assert hirer_login.json()["user"]["role"] == "HIRER"

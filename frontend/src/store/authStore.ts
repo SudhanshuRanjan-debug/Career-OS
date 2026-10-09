@@ -13,19 +13,23 @@ interface AuthState {
   initializeAuth: () => Promise<void>;
 }
 
+let initPromise: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
   isAuthenticated: false,
   isInitializing: true,
 
-  setAuth: (user, token) =>
+  setAuth: (user, token) => {
+    initPromise = null;
     set({
       user,
       accessToken: token,
       isAuthenticated: true,
       isInitializing: false,
-    }),
+    });
+  },
 
   setAccessToken: (token) =>
     set({
@@ -33,39 +37,48 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAuthenticated: true,
     }),
 
-  clearAuth: () =>
+  clearAuth: () => {
+    initPromise = null;
     set({
       user: null,
       accessToken: null,
       isAuthenticated: false,
       isInitializing: false,
-    }),
+    });
+  },
 
   initializeAuth: async () => {
     // Avoid re-running initialization if already done
     if (!get().isInitializing && get().isAuthenticated) return;
+    if (initPromise) return initPromise;
 
-    try {
-      // 1. Check if an active session exists via HttpOnly cookie refresh
-      const { access_token } = await authService.refreshToken();
-      set({ accessToken: access_token });
+    initPromise = (async () => {
+      try {
+        // 1. Check if an active session exists via HttpOnly cookie refresh
+        const { access_token } = await authService.refreshToken();
+        set({ accessToken: access_token });
 
-      // 2. Fetch authenticated user profile
-      const user = await authService.getMe();
-      set({
-        user,
-        accessToken: access_token,
-        isAuthenticated: true,
-        isInitializing: false,
-      });
-    } catch {
-      // Unauthenticated or expired session
-      set({
-        user: null,
-        accessToken: null,
-        isAuthenticated: false,
-        isInitializing: false,
-      });
-    }
+        // 2. Fetch authenticated user profile
+        const user = await authService.getMe();
+        set({
+          user,
+          accessToken: access_token,
+          isAuthenticated: true,
+          isInitializing: false,
+        });
+      } catch {
+        // Unauthenticated or expired session
+        set({
+          user: null,
+          accessToken: null,
+          isAuthenticated: false,
+          isInitializing: false,
+        });
+      } finally {
+        initPromise = null;
+      }
+    })();
+
+    return initPromise;
   },
 }));

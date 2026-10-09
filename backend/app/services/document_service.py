@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.file_validation import validate_uploaded_file, sanitize_filename
 from app.models.document import Document
 from app.schemas.document import DocumentResponse
 from app.storage.base import StorageBackend
@@ -25,12 +26,6 @@ VALID_DOC_TYPES = {
     "RECOMMENDATION",
     "OTHER",
 }
-
-
-def sanitize_filename(filename: str) -> str:
-    clean = Path(filename).name
-    clean = re.sub(r"[^\w\.\-\_]", "_", clean)
-    return clean or "document.pdf"
 
 
 class DocumentService:
@@ -58,55 +53,36 @@ class DocumentService:
         doc_type: str = "OTHER",
         description: str | None = None,
     ) -> DocumentResponse:
-        original_filename = file.filename or "document.pdf"
-        safe_filename = sanitize_filename(original_filename)
-        extension = Path(safe_filename).suffix.lower()
-
-        # 1. Validate extension
-        if extension not in ALLOWED_DOC_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file type '{extension}'. Allowed formats: PDF, DOC, DOCX, TXT, PNG, JPG",
-            )
-
-        # 2. Validate doc type
+        # 1. Normalize doc type
         normalized_doc_type = doc_type.upper() if doc_type else "OTHER"
         if normalized_doc_type not in VALID_DOC_TYPES:
             normalized_doc_type = "OTHER"
 
-        # 3. Read and validate file size
-        content = await file.read()
-        if len(content) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Uploaded file is empty",
-            )
-        if len(content) > settings.MAX_UPLOAD_SIZE_BYTES:
-            raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail=f"File exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB",
-            )
+        # 2. Deep content validation, magic byte checking, and size limits
+        validated = await validate_uploaded_file(
+            file=file,
+            allowed_extensions=ALLOWED_DOC_EXTENSIONS,
+            max_size_bytes=settings.MAX_UPLOAD_SIZE_BYTES,
+        )
 
+        display_name = name.strip() if name and name.strip() else Path(validated.safe_filename).stem
 
-        mime_type = file.content_type or "application/octet-stream"
-        display_name = name.strip() if name and name.strip() else Path(safe_filename).stem
-
-        # 4. Storage key
+        # 3. Storage key
         file_uuid = uuid.uuid4()
-        storage_key = f"documents/{user_id}/{file_uuid}_{safe_filename}"
+        storage_key = f"documents/{user_id}/{file_uuid}_{validated.safe_filename}"
 
-        # 5. Write to storage
-        await storage.put(storage_key, content, mime_type)
+        # 4. Write to storage
+        await storage.put(storage_key, validated.content, validated.mime_type)
 
-        # 6. Database record
+        # 5. Database record
         document = Document(
             user_id=user_id,
             name=display_name,
             doc_type=normalized_doc_type,
-            original_filename=original_filename,
+            original_filename=validated.original_filename,
             storage_key=storage_key,
-            file_size_bytes=len(content),
-            mime_type=mime_type,
+            file_size_bytes=validated.size_bytes,
+            mime_type=validated.mime_type,
             description=description,
             version=1,
         )

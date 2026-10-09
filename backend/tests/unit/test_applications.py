@@ -355,7 +355,7 @@ def test_application_documents_attachment(db_client: TestClient):
     headers = register_and_login(db_client, "appuser7@example.com", "appuser7")
 
     # Upload document to vault
-    doc_file = io.BytesIO(b"Sample Cover Letter Content")
+    doc_file = io.BytesIO(b"%PDF-1.4 Sample Cover Letter Content")
     doc_res = db_client.post(
         "/api/v1/documents/upload",
         files={"file": ("cover_letter.pdf", doc_file, "application/pdf")},
@@ -455,7 +455,7 @@ def test_health_engine_deterministic_rules(db_client: TestClient):
     headers = register_and_login(db_client, "appuser9@example.com", "appuser9")
 
     # Upload resume
-    resume_file = io.BytesIO(b"Resume PDF Content")
+    resume_file = io.BytesIO(b"%PDF-1.4 Resume PDF Content")
     res_upload = db_client.post(
         "/api/v1/resumes/upload",
         files={"file": ("resume.pdf", resume_file, "application/pdf")},

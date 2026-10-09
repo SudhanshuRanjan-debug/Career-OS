@@ -80,7 +80,7 @@ export const SignUpPage: React.FC = () => {
         <h2 className="text-xl font-bold text-slate-900 text-center">Create your account</h2>
         <p className="mt-1 text-xs text-slate-500 text-center">
           Already have an account?{" "}
-          <Link to="/signin" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
             Sign in
           </Link>
         </p>
@@ -103,8 +103,8 @@ export const SignUpPage: React.FC = () => {
               : "border-slate-200 hover:border-slate-300 bg-white"
           }`}
         >
-          <div className="text-sm font-semibold text-slate-900">Job Seeker</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Find jobs & track applications</div>
+          <div className="text-sm font-semibold text-slate-900">Candidate / Applicant</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Job seeker finding jobs & tracking applications</div>
         </button>
         <button
           type="button"
@@ -115,8 +115,8 @@ export const SignUpPage: React.FC = () => {
               : "border-slate-200 hover:border-slate-300 bg-white"
           }`}
         >
-          <div className="text-sm font-semibold text-slate-900">Employer / Hirer</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Post openings & review talent</div>
+          <div className="text-sm font-semibold text-slate-900">Hirer / Recruiter</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Employer posting openings & reviewing talent</div>
         </button>
       </div>
 
@@ -163,8 +163,8 @@ export const SignUpPage: React.FC = () => {
           {loading
             ? "Creating account..."
             : role === "HIRER"
-            ? "Create Employer Account"
-            : "Create Candidate Account"}
+            ? "Create Hirer / Recruiter Account"
+            : "Create Candidate / Applicant Account"}
         </Button>
       </form>
     </div>

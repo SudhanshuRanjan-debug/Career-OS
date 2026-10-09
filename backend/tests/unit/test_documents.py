@@ -112,3 +112,17 @@ def test_document_file_validation_and_path_traversal(db_client: TestClient):
     # Stored storage_key is scoped under documents/{user_id}/ and does not contain ..
     assert ".." not in uploaded_doc["storage_key"]
     assert uploaded_doc["storage_key"].startswith(f"documents/")
+
+    # 3. Download verifies safe headers
+    doc_id = uploaded_doc["id"]
+    dl = db_client.get(f"/api/v1/documents/{doc_id}/download", headers=headers)
+    assert dl.status_code == 200
+    assert "attachment" in dl.headers["content-disposition"]
+    assert dl.headers["x-content-type-options"] == "nosniff"
+    assert ".." not in dl.headers["content-disposition"]
+
+    # 4. Extension/content mismatch is rejected
+    mismatch_file = {"file": ("notes.pdf", io.BytesIO(b"\x89PNG\r\n\x1a\nFake PNG"), "application/pdf")}
+    mm_res = db_client.post("/api/v1/documents/upload", files=mismatch_file, headers=headers)
+    assert mm_res.status_code == 400
+    assert "does not match" in mm_res.json()["detail"].lower()

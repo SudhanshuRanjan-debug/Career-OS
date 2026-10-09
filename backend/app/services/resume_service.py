@@ -14,6 +14,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.file_validation import validate_uploaded_file, sanitize_filename
 from app.models.resume import Resume
 from app.schemas.resume import ResumeResponse
 from app.storage.base import StorageBackend
@@ -25,13 +26,6 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/octet-stream",  # Fallback for some browsers, checked with extension
 }
-
-
-def sanitize_filename(filename: str) -> str:
-    """Sanitize filename to prevent path traversal and shell exploits."""
-    clean = Path(filename).name
-    clean = re.sub(r"[^\w\.\-\_]", "_", clean)
-    return clean or "resume.pdf"
 
 
 class ResumeService:
@@ -54,41 +48,15 @@ class ResumeService:
         file: UploadFile,
         name: str | None = None,
     ) -> ResumeResponse:
-        original_filename = file.filename or "resume.pdf"
-        safe_filename = sanitize_filename(original_filename)
-        extension = Path(safe_filename).suffix.lower()
-
-        # 1. Validate extension
-        if extension not in ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file type '{extension}'. Allowed formats: PDF, DOC, DOCX",
-            )
-
-        # 2. Validate MIME type if provided
-        mime_type = file.content_type or "application/octet-stream"
-        if mime_type not in ALLOWED_MIME_TYPES and mime_type != "application/octet-stream":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported media type '{mime_type}'. Must be PDF or Word document",
-            )
-
-        # 3. Read and validate size
-        content = await file.read()
-        if len(content) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Uploaded file is empty",
-            )
-        if len(content) > settings.MAX_UPLOAD_SIZE_BYTES:
-            raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail=f"File exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB",
-            )
-
+        # Validate file content, magic bytes, DOCX structure, and size
+        validated = await validate_uploaded_file(
+            file=file,
+            allowed_extensions=ALLOWED_EXTENSIONS,
+            max_size_bytes=settings.MAX_UPLOAD_SIZE_BYTES,
+        )
 
         # Default name if none provided
-        display_name = name.strip() if name and name.strip() else Path(safe_filename).stem
+        display_name = name.strip() if name and name.strip() else Path(validated.safe_filename).stem
 
         # 4. Version calculation
         version_query = await db.execute(
@@ -112,19 +80,19 @@ class ResumeService:
 
         # 6. Generate secure, unique storage key
         file_uuid = uuid.uuid4()
-        storage_key = f"resumes/{user_id}/{file_uuid}_{safe_filename}"
+        storage_key = f"resumes/{user_id}/{file_uuid}_{validated.safe_filename}"
 
         # 7. Write to storage backend
-        await storage.put(storage_key, content, mime_type)
+        await storage.put(storage_key, validated.content, validated.mime_type)
 
         # 8. Record in database
         resume = Resume(
             user_id=user_id,
             name=display_name,
-            original_filename=original_filename,
+            original_filename=validated.original_filename,
             storage_key=storage_key,
-            file_size_bytes=len(content),
-            mime_type=mime_type,
+            file_size_bytes=validated.size_bytes,
+            mime_type=validated.mime_type,
             version=version,
             is_default=is_default,
         )

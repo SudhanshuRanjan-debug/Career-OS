@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_storage, require_hirer
+from app.core.file_download import create_secure_file_download_response
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.application import (
@@ -115,17 +116,10 @@ async def download_applicant_resume(
 
     file_stream = await storage.get_stream(storage_key)
 
-    def iter_file():
-        try:
-            while chunk := file_stream.read(64 * 1024):
-                yield chunk
-        finally:
-            file_stream.close()
-
-    return StreamingResponse(
-        iter_file(),
+    return create_secure_file_download_response(
+        file_stream=file_stream,
+        filename=filename,
         media_type=mime_type,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 

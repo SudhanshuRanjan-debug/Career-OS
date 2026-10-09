@@ -10,13 +10,13 @@ services:
     container_name: career_platform_prod_db
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-career_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres_admin}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Error - POSTGRES_PASSWORD must be provided for production}"
+      POSTGRES_DB: ${POSTGRES_DB:-career_platform_prod}
     volumes:
       - postgres_prod_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-career_platform}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres_admin} -d ${POSTGRES_DB:-career_platform_prod}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,15 +37,19 @@ services:
         condition: service_healthy
     environment:
       ENVIRONMENT: production
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-career_platform}
-      SECRET_KEY: ${SECRET_KEY:-prod_super_secret_jwt_key_at_least_32_chars_long}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      DEBUG: "false"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres_admin}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Error - POSTGRES_PASSWORD must be provided for production}"
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres_admin}:${POSTGRES_PASSWORD:?Error - POSTGRES_PASSWORD must be provided for production}@db:5432/${POSTGRES_DB:-career_platform_prod}"
+      SECRET_KEY: "${SECRET_KEY:?Error - SECRET_KEY must be provided for production}"
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost}"
       STORAGE_LOCAL_ROOT: /app/storage
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - storage_prod_data:/app/storage
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/v1/health\")'"]
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
       interval: 15s
       timeout: 5s
       retries: 3

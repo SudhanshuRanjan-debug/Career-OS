@@ -26,7 +26,10 @@ export const SignInPage: React.FC = () => {
 
       const defaultDest = response.user.role === "HIRER" ? "/recruiter/jobs" : "/dashboard";
       const fromPath = (location.state as { from?: { pathname?: string } })?.from?.pathname;
-      const destination = fromPath && fromPath !== "/" ? fromPath : defaultDest;
+      const destination =
+        fromPath && fromPath !== "/" && fromPath !== "/login" && fromPath !== "/signin"
+          ? fromPath
+          : defaultDest;
       navigate(destination, { replace: true });
     } catch (err: any) {
       const msg =

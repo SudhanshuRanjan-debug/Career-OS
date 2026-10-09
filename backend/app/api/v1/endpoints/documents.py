@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_storage, require_candidate
+from app.core.file_download import create_secure_file_download_response
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import MessageResponse
@@ -67,20 +68,10 @@ async def download_document(
     mime_type = document.mime_type or "application/octet-stream"
     filename = document.original_filename or f"{document.name}.pdf"
 
-    def iter_file():
-        try:
-            while chunk := file_stream.read(64 * 1024):
-                yield chunk
-        finally:
-            file_stream.close()
-
-    return StreamingResponse(
-        iter_file(),
+    return create_secure_file_download_response(
+        file_stream=file_stream,
+        filename=filename,
         media_type=mime_type,
-        headers={
-            "Content-Disposition": f'inline; filename="{filename}"',
-            "Content-Type": mime_type,
-        },
     )
 
 

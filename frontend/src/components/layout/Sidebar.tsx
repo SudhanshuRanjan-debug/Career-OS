@@ -69,7 +69,7 @@ export const Sidebar: React.FC = () => {
       // Ignore network errors on logout
     } finally {
       clearAuth();
-      navigate("/signin", { replace: true });
+      navigate("/login", { replace: true });
     }
   };
 

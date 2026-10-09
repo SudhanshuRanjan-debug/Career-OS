@@ -9,6 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user
+from app.core.rate_limiter import (
+    rate_limit_forgot_password,
+    rate_limit_login,
+    rate_limit_refresh,
+    rate_limit_register,
+    rate_limit_reset_password,
+)
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import MessageResponse
@@ -78,6 +85,7 @@ async def register(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
+    rate_limit_register(request)
     ip_address, user_agent = _extract_client_info(request)
     user, access_token, raw_refresh = await auth_service.register_user(
         db=db,
@@ -105,6 +113,7 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
+    rate_limit_login(request, data.email)
     ip_address, user_agent = _extract_client_info(request)
     user, access_token, raw_refresh = await auth_service.authenticate_user(
         db=db,
@@ -136,6 +145,7 @@ async def refresh(
     body: Optional[RefreshTokenRequest] = None,
     db: AsyncSession = Depends(get_db),
 ):
+    rate_limit_refresh(request)
     # Read refresh token from HttpOnly cookie first, fall back to body
     raw_token = request.cookies.get(settings.REFRESH_COOKIE_NAME)
     if not raw_token and body and body.refresh_token:
@@ -204,8 +214,10 @@ async def get_me(current_user: User = Depends(get_current_user)):
 )
 async def forgot_password(
     data: ForgotPasswordRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    rate_limit_forgot_password(request, data.email)
     await auth_service.initiate_password_reset(db=db, email=data.email)
     return MessageResponse(
         message="If this email is registered, password reset instructions have been sent."
@@ -220,8 +232,10 @@ async def forgot_password(
 )
 async def reset_password(
     data: ResetPasswordRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    rate_limit_reset_password(request)
     await auth_service.reset_password(
         db=db,
         raw_token=data.token,
