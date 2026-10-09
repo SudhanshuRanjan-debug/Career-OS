@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  AlertCircle,
   ArrowLeft,
   Briefcase,
   Calendar,
@@ -8,11 +9,13 @@ import {
   Clock,
   Download,
   FileText,
+  Loader2,
   Mail,
   MapPin,
   Phone,
   User,
   Users,
+  X,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -52,6 +55,26 @@ export const JobApplicantsPage: React.FC = () => {
   const [targetStage, setTargetStage] = useState<string>("");
   const [stageModalOpen, setStageModalOpen] = useState(false);
   const [stageSubmitting, setStageSubmitting] = useState(false);
+
+  // Resume download state
+  const [downloadingAppIds, setDownloadingAppIds] = useState<Record<string, boolean>>({});
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const handleDownloadResume = async (applicationId: string, fallbackFilename?: string) => {
+    setDownloadingAppIds((prev) => ({ ...prev, [applicationId]: true }));
+    setDownloadError(null);
+    try {
+      await jobService.downloadApplicantResume(applicationId, fallbackFilename);
+    } catch (err: any) {
+      setDownloadError(err?.message || "Failed to download applicant resume.");
+    } finally {
+      setDownloadingAppIds((prev) => {
+        const next = { ...prev };
+        delete next[applicationId];
+        return next;
+      });
+    }
+  };
 
   const fetchJobAndApplicants = async () => {
     if (!jobId) return;
@@ -167,6 +190,23 @@ export const JobApplicantsPage: React.FC = () => {
         )}
       </div>
 
+      {/* Download error alert */}
+      {downloadError && (
+        <div className="flex items-center justify-between p-3 rounded-xl border border-red-200 bg-red-50 text-red-800 text-xs shadow-sm">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+            <span className="font-medium">{downloadError}</span>
+          </div>
+          <button
+            onClick={() => setDownloadError(null)}
+            className="text-red-500 hover:text-red-700 p-1 rounded transition-colors"
+            aria-label="Dismiss error"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Stage Filter Buttons */}
       <div className="flex flex-wrap items-center gap-1.5 bg-white p-3 rounded-xl border border-slate-200">
         <button
@@ -260,15 +300,16 @@ export const JobApplicantsPage: React.FC = () => {
 
                 <div className="flex flex-wrap items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0">
                   {app.resume_id && (
-                    <a
-                      href={jobService.getApplicantResumeDownloadUrl(app.application_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-colors"
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      isLoading={!!downloadingAppIds[app.application_id]}
+                      leftIcon={<Download className="w-3.5 h-3.5 text-slate-500" />}
+                      onClick={() => handleDownloadResume(app.application_id, app.resume_name || undefined)}
+                      className="border-slate-200 hover:border-slate-300 text-slate-700 hover:bg-slate-50"
                     >
-                      <Download className="w-3.5 h-3.5 text-slate-500" />
                       Resume
-                    </a>
+                    </Button>
                   )}
 
                   <Button
@@ -307,6 +348,23 @@ export const JobApplicantsPage: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-5">
+            {/* Modal download error banner */}
+            {downloadError && (
+              <div className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                  <span className="font-medium">{downloadError}</span>
+                </div>
+                <button
+                  onClick={() => setDownloadError(null)}
+                  className="text-red-500 hover:text-red-700 p-1 rounded"
+                  aria-label="Dismiss error"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* Candidate Summary Box */}
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
               <div className="flex items-start justify-between">
@@ -362,15 +420,21 @@ export const JobApplicantsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <a
-                  href={jobService.getApplicantResumeDownloadUrl(selectedApplicantDetail.application_id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  isLoading={!!downloadingAppIds[selectedApplicantDetail.application_id]}
+                  leftIcon={<Download className="w-3.5 h-3.5 text-blue-600" />}
+                  onClick={() =>
+                    handleDownloadResume(
+                      selectedApplicantDetail.application_id,
+                      selectedApplicantDetail.resume?.file_name || selectedApplicantDetail.resume?.name
+                    )
+                  }
+                  className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
                 >
-                  <Download className="w-3.5 h-3.5" />
                   Download Resume
-                </a>
+                </Button>
               </div>
             )}
 

@@ -504,6 +504,87 @@ def test_cross_hirer_tenant_isolation(db_client: TestClient):
     assert db_client.get(f"/api/v1/recruiter/jobs/{job_a_id}/applicants", headers=headers_b).status_code == 404
 
 
+def test_recruiter_resume_download_authorization_and_isolation(db_client: TestClient):
+    """
+    Verify recruiter resume endpoint authorization controls:
+    1. Unauthenticated requests return 401 Unauthorized ("Authentication credentials were not provided").
+    2. Candidate user tokens return 403 Forbidden (requires HIRER role).
+    3. Cross-tenant recruiter tokens from a different organization return 404 Not Found.
+    4. Non-existent application IDs return 404 Not Found.
+    5. Authorized recruiter of the hiring organization successfully downloads the resume with 200 OK,
+       correct Content-Disposition (filename and attachment), MIME type, and nosniff security header.
+    """
+    # 1. Register Hirer Org Alpha
+    register_user(db_client, email="alpha_recruiter@corp.com", username="alpha_rec", role="HIRER", organization_name="Alpha Tech")
+    alpha_headers = auth_headers(db_client, "alpha_recruiter@corp.com")
+
+    # 2. Register Hirer Org Beta
+    register_user(db_client, email="beta_recruiter@corp.com", username="beta_rec", role="HIRER", organization_name="Beta Tech")
+    beta_headers = auth_headers(db_client, "beta_recruiter@corp.com")
+
+    # 3. Register Candidate
+    register_user(db_client, email="resume_cand@domain.com", username="res_cand", role="CANDIDATE")
+    cand_headers = auth_headers(db_client, "resume_cand@domain.com")
+
+    # 4. Alpha posts and publishes a job
+    job = db_client.post("/api/v1/recruiter/jobs", json={"title": "Staff Backend Engineer", "description": "High scale role"}, headers=alpha_headers).json()
+    job_id = job["id"]
+    db_client.post(f"/api/v1/recruiter/jobs/{job_id}/publish", headers=alpha_headers)
+
+    # 5. Candidate uploads resume
+    resume_bytes = b"%PDF-1.4 authorized applicant resume bytes"
+    files = {"file": ("alpha_applicant_resume.pdf", io.BytesIO(resume_bytes), "application/pdf")}
+    res_upload = db_client.post("/api/v1/resumes/upload", files=files, data={"name": "Alpha App CV"}, headers=cand_headers)
+    assert res_upload.status_code == 201
+    resume_id = res_upload.json()["id"]
+
+    # 6. Candidate applies to Alpha's job
+    apply_res = db_client.post(
+        f"/api/v1/jobs/{job_id}/apply",
+        json={"resume_id": resume_id, "notes": "Interested in Alpha Tech"},
+        headers=cand_headers,
+    )
+    assert apply_res.status_code == 201
+    application_id = apply_res.json()["id"]
+
+    # TEST 1: Unauthenticated request -> 401 Unauthorized
+    res_unauth = db_client.get(f"/api/v1/recruiter/jobs/applications/{application_id}/resume")
+    assert res_unauth.status_code == 401
+    assert "detail" in res_unauth.json()
+
+    # TEST 2: Candidate user -> 403 Forbidden
+    res_cand = db_client.get(
+        f"/api/v1/recruiter/jobs/applications/{application_id}/resume",
+        headers=cand_headers,
+    )
+    assert res_cand.status_code == 403
+
+    # TEST 3: Cross-tenant recruiter (Beta) accessing Alpha's applicant resume -> 404 Not Found
+    res_cross = db_client.get(
+        f"/api/v1/recruiter/jobs/applications/{application_id}/resume",
+        headers=beta_headers,
+    )
+    assert res_cross.status_code == 404
+
+    # TEST 4: Non-existent application ID -> 404 Not Found
+    res_not_found = db_client.get(
+        f"/api/v1/recruiter/jobs/applications/{uuid4()}/resume",
+        headers=alpha_headers,
+    )
+    assert res_not_found.status_code == 404
+
+    # TEST 5: Authorized Alpha recruiter -> 200 OK with secure headers and correct content
+    res_auth = db_client.get(
+        f"/api/v1/recruiter/jobs/applications/{application_id}/resume",
+        headers=alpha_headers,
+    )
+    assert res_auth.status_code == 200
+    assert res_auth.content == resume_bytes
+    assert "attachment" in res_auth.headers.get("content-disposition", "")
+    assert "alpha_applicant_resume.pdf" in res_auth.headers.get("content-disposition", "")
+    assert res_auth.headers.get("x-content-type-options") == "nosniff"
+
+
 # ===========================================================================
 # 7. Recruiter Analytics Dashboard
 # ===========================================================================
