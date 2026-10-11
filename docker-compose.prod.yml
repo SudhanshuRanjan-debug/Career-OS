@@ -44,7 +44,11 @@ services:
       SECRET_KEY: "${SECRET_KEY:?Error - SECRET_KEY must be provided for production}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS:-localhost,127.0.0.1}"
       CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost}"
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
       STORAGE_LOCAL_ROOT: /app/storage
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - storage_prod_data:/app/storage
