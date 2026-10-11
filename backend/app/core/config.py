@@ -138,6 +138,20 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AZURE_STORAGE_CONTAINER", "AZURE_STORAGE_CONTAINER_NAME"),
     )
 
+    # Amazon S3 Storage
+    S3_BUCKET_NAME: str = Field(
+        "",
+        validation_alias=AliasChoices("S3_BUCKET_NAME", "AWS_S3_BUCKET", "AWS_STORAGE_BUCKET_NAME"),
+    )
+    AWS_REGION: str = Field(
+        "us-east-1",
+        validation_alias=AliasChoices("AWS_REGION", "AWS_DEFAULT_REGION"),
+    )
+    AWS_ENDPOINT_URL: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("AWS_ENDPOINT_URL", "S3_ENDPOINT_URL"),
+    )
+
     @property
     def STORAGE_PROVIDER(self) -> str:
         return self.STORAGE_BACKEND
@@ -265,6 +279,13 @@ class Settings(BaseSettings):
                     "Production startup rejected: ALLOWED_HOSTS cannot contain wildcard '*' in production. "
                     "Specify explicit domain names or hostnames."
                 )
+
+            # 4. Validate S3 bucket name if S3 storage is enabled in production
+            if (self.STORAGE_BACKEND or "").strip().lower() == "s3":
+                if not (self.S3_BUCKET_NAME or "").strip():
+                    raise ValueError(
+                        "Production startup rejected: S3_BUCKET_NAME must be configured when STORAGE_BACKEND is 's3'."
+                    )
 
         return self
 
